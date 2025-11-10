@@ -11,7 +11,7 @@ import asyncio
 import json
 
 from src.player import Player
-from src.database import db_manager
+import src.database as db_manager
 from config.bot_config import BOT_CONFIG, ADMIN_CONFIG
 
 # Custom admin check function
@@ -83,7 +83,7 @@ class AdminCommands(commands.Cog):
             
             if min_count is None or max_count is None or interval_minutes is None:
                 # Show current settings
-                settings = await db_manager.fetchone("""
+                settings = await db_manager.db_manager.fetchone("""
                     SELECT min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled 
                     FROM guild_spawn_settings WHERE guild_id = ?
                 """, (guild_id,))
@@ -119,7 +119,7 @@ class AdminCommands(commands.Cog):
                 return
             
             # Update or insert settings
-            await db_manager.execute("""
+            await db_manager.db_manager.execute("""
                 INSERT OR REPLACE INTO guild_spawn_settings 
                 (guild_id, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled, updated_at)
                 VALUES (?, ?, ?, ?, 1, datetime('now'))
@@ -156,7 +156,7 @@ class AdminCommands(commands.Cog):
             action = action.lower()
             
             # Get current settings
-            settings = await db_manager.fetchone("""
+            settings = await db_manager.db_manager.fetchone("""
                 SELECT spawn_channel_ids FROM guild_spawn_settings WHERE guild_id = ?
             """, (guild_id,))
             
@@ -180,7 +180,7 @@ class AdminCommands(commands.Cog):
                 channel_ids.append(channel_id_str)
                 
                 # Save back to database
-                await db_manager.execute("""
+                await db_manager.db_manager.execute("""
                     INSERT OR REPLACE INTO guild_spawn_settings 
                     (guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled)
                     VALUES (?, ?, 2, 4, 3, 1)
@@ -207,7 +207,7 @@ class AdminCommands(commands.Cog):
                 channel_ids.remove(channel_id_str)
                 
                 # Save back to database
-                await db_manager.execute("""
+                await db_manager.db_manager.execute("""
                     INSERT OR REPLACE INTO guild_spawn_settings 
                     (guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled)
                     VALUES (?, ?, 2, 4, 3, 1)
@@ -220,7 +220,7 @@ class AdminCommands(commands.Cog):
                     await ctx.send("❌ No spawn channels to clear!")
                     return
                 
-                await db_manager.execute("""
+                await db_manager.db_manager.execute("""
                     INSERT OR REPLACE INTO guild_spawn_settings 
                     (guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled)
                     VALUES (?, '[]', 2, 4, 3, 1)
@@ -307,19 +307,19 @@ class AdminCommands(commands.Cog):
             await wild_rat_manager._check_and_cleanup_expired_spawns()
             
             # Clean old dungeon runs
-            await db_manager.execute("""
+            await db_manager.db_manager.execute("""
                 DELETE FROM dungeon_runs 
                 WHERE status != 'active' AND completed_at < datetime('now', '-7 days')
             """)
             
             # Clean old wild rats
-            await db_manager.execute("""
+            await db_manager.db_manager.execute("""
                 DELETE FROM wild_rats 
                 WHERE expires_at < datetime('now', '-1 day')
             """)
             
             # Clean old traders
-            await db_manager.execute("""
+            await db_manager.db_manager.execute("""
                 DELETE FROM active_traders 
                 WHERE expires_at < datetime('now', '-1 day')
             """)
@@ -328,6 +328,25 @@ class AdminCommands(commands.Cog):
             
         except Exception as e:
             await ctx.send(f"❌ Cleanup failed: {e}")
+    
+    @commands.command(name='admin_clear_spawns', hidden=True)
+    async def admin_clear_spawns(self, ctx):
+        """Clear all active rat spawns (debugging)"""
+        if not await is_admin(ctx):
+            await ctx.send("❌ You don't have permission to use this command!")
+            return
+            
+        try:
+            from src.catch_system import wild_rat_manager
+            
+            # Clear all active spawns
+            spawn_count = len(wild_rat_manager.active_spawns)
+            wild_rat_manager.clear_all_active_spawns()
+            
+            await ctx.send(f"🧹 Cleared {spawn_count} active spawns")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error clearing spawns: {e}")
     
     @commands.command(name='admin_stats', hidden=True)
     async def admin_stats(self, ctx):
@@ -338,9 +357,9 @@ class AdminCommands(commands.Cog):
             
         try:
             # Get database stats
-            player_count = await db_manager.fetchone("SELECT COUNT(*) as count FROM players")
-            dungeon_count = await db_manager.fetchone("SELECT COUNT(*) as count FROM dungeon_runs")
-            active_runs = await db_manager.fetchone("SELECT COUNT(*) as count FROM dungeon_runs WHERE status = 'active'")
+            player_count = await db_manager.db_manager.fetchone("SELECT COUNT(*) as count FROM players")
+            dungeon_count = await db_manager.db_manager.fetchone("SELECT COUNT(*) as count FROM dungeon_runs")
+            active_runs = await db_manager.db_manager.fetchone("SELECT COUNT(*) as count FROM dungeon_runs WHERE status = 'active'")
             
             # Get active content
             from src.catch_system import wild_rat_manager
@@ -389,7 +408,7 @@ class AdminCommands(commands.Cog):
             
         try:
             # Get top players by level
-            top_players = await db_manager.fetchall("""
+            top_players = await db_manager.db_manager.fetchall("""
                 SELECT username, level, xp, gold 
                 FROM players 
                 ORDER BY level DESC, xp DESC 
@@ -397,7 +416,7 @@ class AdminCommands(commands.Cog):
             """)
             
             # Get total player count
-            total_players = await db_manager.fetchone("SELECT COUNT(*) as count FROM players")
+            total_players = await db_manager.db_manager.fetchone("SELECT COUNT(*) as count FROM players")
             
             embed = discord.Embed(
                 title="👥 Player Statistics",
@@ -415,7 +434,7 @@ class AdminCommands(commands.Cog):
                 embed.add_field(name="🏆 Top Players", value="No players found", inline=False)
             
             # Get level distribution
-            level_dist = await db_manager.fetchall("""
+            level_dist = await db_manager.db_manager.fetchall("""
                 SELECT level, COUNT(*) as count 
                 FROM players 
                 GROUP BY level 
@@ -523,7 +542,7 @@ class AdminCommands(commands.Cog):
                 stat_points = level_diff * 3
                 perk_points = level_diff
                 
-                await db_manager.execute("""
+                await db_manager.db_manager.execute("""
                     UPDATE players 
                     SET level = ?, xp = ?, stat_points = stat_points + ?, perk_points = perk_points + ?
                     WHERE discord_id = ?
@@ -536,7 +555,7 @@ class AdminCommands(commands.Cog):
                 new_level = max(1, player.level + levels)
                 new_xp = XP_REQUIREMENTS.get(new_level, 0)
                 
-                await db_manager.execute("""
+                await db_manager.db_manager.execute("""
                     UPDATE players 
                     SET level = ?, xp = ?
                     WHERE discord_id = ?
@@ -566,12 +585,12 @@ class AdminCommands(commands.Cog):
                 return
             
             # Delete all player data
-            await db_manager.execute("DELETE FROM player_stats WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM equipment WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM player_perks WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM player_inventory WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM dungeon_runs WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM players WHERE discord_id = ?", (str(user.id)))
+            await db_manager.db_manager.execute("DELETE FROM player_stats WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM equipment WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM player_perks WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM player_inventory WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM dungeon_runs WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM players WHERE discord_id = ?", (str(user.id)))
             
             await ctx.send(f"✅ {user.mention}'s character data has been reset!")
             
@@ -597,12 +616,12 @@ class AdminCommands(commands.Cog):
                 return
             
             # Delete all player data
-            await db_manager.execute("DELETE FROM player_stats WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM equipment WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM player_perks WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM player_inventory WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM dungeon_runs WHERE player_id = ?", (player.id,))
-            await db_manager.execute("DELETE FROM players WHERE discord_id = ?", (str(ctx.author.id)))
+            await db_manager.db_manager.execute("DELETE FROM player_stats WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM equipment WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM player_perks WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM player_inventory WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM dungeon_runs WHERE player_id = ?", (player.id,))
+            await db_manager.db_manager.execute("DELETE FROM players WHERE discord_id = ?", (str(ctx.author.id)))
             
             await ctx.send(f"✅ Your character data has been reset! Use `!create` to make a new cat.")
             

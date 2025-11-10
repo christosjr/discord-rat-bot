@@ -35,29 +35,39 @@ class WildRatManager:
             self.spawn_timer.cancel()
             logger.info("Stopped wild rat spawning system")
     
+    async def clear_all_active_spawns(self):
+        """Clear all active spawns (for debugging)"""
+        self.active_spawns.clear()
+        logger.info("Cleared all active spawns")
+        
     async def _spawn_loop(self):
         """Main spawning loop - spawns rats in all configured channels every 3 minutes"""
         while True:
             try:
+                logger.info("Spawn loop iteration starting...")
                 await self._check_and_cleanup_expired_spawns()
                 await self._spawn_rats_in_all_channels()
                 await asyncio.sleep(180)  # Check every 3 minutes (180 seconds)
             except asyncio.CancelledError:
+                logger.info("Spawn loop cancelled")
                 break
             except Exception as e:
                 logger.error(f"Error in spawn loop: {e}")
-                await asyncio.sleep(180)
+                await asyncio.sleep(60)  # Wait 1 minute before retry on error
 
     async def _spawn_rats_in_all_channels(self):
         """Spawn rats in all configured channels based on guild settings"""
         try:
             # Get all guild spawn settings from database
-            guild_settings = await db_manager.fetchall("""
+            from src.database import db_manager as local_db_manager
+            guild_settings = await local_db_manager.fetchall("""
                 SELECT guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, 
                        spawn_interval_minutes, enabled 
                 FROM guild_spawn_settings 
                 WHERE enabled = 1
             """)
+            
+            logger.info(f"Found {len(guild_settings)} guilds with spawn settings enabled")
             
             for settings in guild_settings:
                 if not self.bot:
@@ -66,7 +76,13 @@ class WildRatManager:
                 try:
                     # Parse channel IDs from JSON
                     import json
-                    channel_ids = json.loads(settings['spawn_channel_ids'])
+                    channel_ids = json.loads(settings['spawn_channel_ids'] or '[]')
+                    
+                    logger.info(f"Guild {settings['guild_id']}: {len(channel_ids)} channels, min={settings['min_spawn_count']}, max={settings['max_spawn_count']}")
+                    
+                    if not channel_ids:
+                        logger.warning(f"Guild {settings['guild_id']} has no configured channels")
+                        continue
                     
                     # Get min/max spawn counts
                     min_spawn = settings['min_spawn_count'] or 2
@@ -81,20 +97,29 @@ class WildRatManager:
                     else:
                         selected_channels = channel_ids
                     
+                    logger.info(f"Guild {settings['guild_id']}: Will spawn {spawn_count} rats in {len(selected_channels)} channels")
+                    
                     # Spawn rats in selected channels
                     for channel_id in selected_channels:
                         # Check if channel already has a rat
                         if channel_id not in self.active_spawns:
+                            logger.info(f"Attempting to spawn rat in channel {channel_id} for guild {settings['guild_id']}")
                             success = await self.spawn_wild_rat(channel_id)
                             if success:
                                 # Send message to channel
                                 try:
                                     channel = self.bot.get_channel(int(channel_id))
                                     if channel:
-                                        await channel.send("🐭 A wild rat has appeared! Use `!catch` to try and catch it!")
-                                        logger.info(f"Spawned rat in channel {channel_id} for guild {settings['guild_id']}")
+                                        await channel.send("🐭 A wild rat has appeared! Use `!catch` to try and catch it! (30 second timer)")
+                                        logger.info(f"✅ Successfully spawned rat in channel {channel_id} for guild {settings['guild_id']}")
+                                    else:
+                                        logger.error(f"❌ Channel {channel_id} not found for guild {settings['guild_id']}")
                                 except Exception as e:
-                                    logger.error(f"Error sending spawn message to channel {channel_id}: {e}")
+                                    logger.error(f"❌ Error sending spawn message to channel {channel_id}: {e}")
+                            else:
+                                logger.error(f"❌ Failed to spawn rat in channel {channel_id} for guild {settings['guild_id']}")
+                        else:
+                            logger.info(f"⚠️ Channel {channel_id} already has an active rat")
                 
                 except Exception as e:
                     logger.error(f"Error spawning rats for guild {settings['guild_id']}: {e}")
@@ -145,7 +170,7 @@ class WildRatManager:
                 return False
             
             # Create spawn data
-            spawn_duration = 60  # 1 minute to catch
+            spawn_duration = 30  # 30 seconds to catch
             expires_at = datetime.now() + timedelta(seconds=spawn_duration)
             
             spawn_data = {
