@@ -118,12 +118,13 @@ class AdminCommands(commands.Cog):
                 await ctx.send("❌ Invalid parameters! Min must be ≥1, max must be ≥ min, interval must be ≥1")
                 return
             
-            # Update or insert settings
+            # Update or insert settings (use default empty channel list)
+            import json
             await db_manager.db_manager.execute("""
                 INSERT OR REPLACE INTO guild_spawn_settings 
-                (guild_id, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled, updated_at)
-                VALUES (?, ?, ?, ?, 1, datetime('now'))
-            """, (guild_id, min_count, max_count, interval_minutes))
+                (guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
+            """, (guild_id, '[]', min_count, max_count, interval_minutes))
             
             embed = discord.Embed(
                 title="✅ Spawn Rate Updated",

@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 from discord import ui
 import asyncio
+import random
 
 from src.player import Player
 from src.catch_system import check_and_spawn_rat, get_channel_spawn_info
@@ -31,40 +32,56 @@ class GameCommands(commands.Cog):
                 await ctx.send("❌ You don't have a character yet! Use `!create` to create one.")
                 return
             
-            # Check if we should spawn a rat
-            spawn_result = await check_and_spawn_rat(str(ctx.channel.id))
+            # Import wild rat manager
+            from src.catch_system import wild_rat_manager
             
-            # Try to catch
-            success, message, data = await trader_manager.attempt_catch(str(ctx.channel.id), str(ctx.author.id))
+            # Check for active wild rat in this channel
+            channel_id = str(ctx.channel.id)
             
-            if not success:
-                # Check if there's an active spawn that player missed
-                spawn_info = await get_channel_spawn_info(str(ctx.channel.id))
-                if spawn_info:
-                    if 'expires_at' in spawn_info and spawn_info['expires_at'].timestamp() < asyncio.get_event_loop().time():
-                        await ctx.send("⏰ Too late! The rat has already escaped.")
-                    else:
-                        await ctx.send(message)
-                else:
-                    # No active spawn, encourage the player
-                    await ctx.send("😿 No wild rat in this channel right now. Keep an eye out - they spawn randomly!")
+            if channel_id not in wild_rat_manager.active_spawns:
+                await ctx.send("😿 No wild rat in this channel right now. Keep an eye out - they spawn randomly!")
+                return
+            
+            # Get spawn data
+            spawn_data = wild_rat_manager.active_spawns[channel_id]
+            
+            # Check if rat has expired
+            if asyncio.get_event_loop().time() > spawn_data['expires_at'].timestamp():
+                await ctx.send("⏰ Too late! The rat has already escaped.")
+                # Remove expired spawn
+                del wild_rat_manager.active_spawns[channel_id]
+                return
+            
+            # Success! Remove the rat from active spawns
+            del wild_rat_manager.active_spawns[channel_id]
+            
+            # Award random rewards
+            gold_earned = random.randint(10, 50)
+            xp_earned = random.randint(5, 25)
+            
+            await player.add_gold(gold_earned)
+            await player.add_xp(xp_earned)
+            
+            # Check for random item drop
+            item_drop = random.choice([None, None, None, None, "rat_tail", "rat_pelt"])
+            if item_drop:
+                await player.add_to_inventory(item_drop, 1)
+                item_message = f" You also found a {item_drop.replace('_', ' ')}!"
             else:
-                # Successful catch
-                embed = discord.Embed(
-                    title="🎯 Catch Successful!",
-                    description=message,
-                    color=0x00ff00
-                )
-                
-                # Add additional info if it's a trader
-                if data.get('trader_type'):
-                    embed.add_field(
-                        name="🏪 Trading Available",
-                        value="Use `!trade` to start trading with this merchant!",
-                        inline=False
-                    )
-                
-                await ctx.send(embed=embed)
+                item_message = ""
+            
+            # Create success message
+            embed = discord.Embed(
+                title="🎯 Catch Successful!",
+                description=f"Caught a wild {spawn_data['rat_type'].replace('_', ' ')}!{item_message}",
+                color=0x00ff00
+            )
+            
+            embed.add_field(name="💰 Gold Earned", value=f"+{gold_earned}", inline=True)
+            embed.add_field(name="⭐ XP Earned", value=f"+{xp_earned}", inline=True)
+            embed.add_field(name="🐱 New Level", value=f"Level {player.level}", inline=True)
+            
+            await ctx.send(embed=embed)
             
         except Exception as e:
             await ctx.send(f"❌ Error catching rat: {e}")
