@@ -284,6 +284,21 @@ async def create_tables():
         )
     """)
     
+    # Guild spawn settings table (for detailed spawn control)
+    await db_manager.execute("""
+        CREATE TABLE IF NOT EXISTS guild_spawn_settings (
+            id INTEGER PRIMARY KEY,
+            guild_id TEXT UNIQUE NOT NULL,
+            enabled BOOLEAN DEFAULT TRUE,
+            spawn_channel_ids TEXT DEFAULT '[]', -- JSON array of channel IDs
+            min_spawn_count INTEGER DEFAULT 2,
+            max_spawn_count INTEGER DEFAULT 4,
+            spawn_interval_minutes INTEGER DEFAULT 3,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     logger.info("All database tables created successfully")
 
 # Utility functions for database operations

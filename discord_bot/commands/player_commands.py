@@ -186,7 +186,7 @@ class PlayerCommands(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error viewing inventory: {e}")
     
-    @commands.command(name='allocate', aliases=['alloc'])
+    @commands.command(name='allocate', aliases=['alloc', 'stats'])
     async def allocate_stat_point(self, ctx, stat: str = None):
         """Allocate a stat point"""
         try:
@@ -291,7 +291,7 @@ class PlayerCommands(commands.Cog):
                     'catch': "**!catch** - Catch wild rats\nThe bot will occasionally spawn wild rats. Be the first to catch them for rewards!",
                     'stats': "**!stats** - View character stats\nAliases: !stat, !character\nShows your level, stats, equipment, and progress.",
                     'inventory': "**!inventory [page]** - View your inventory\nAliases: !inv, !items\nShows your equipment and items. Use page number to navigate.",
-                    'allocate': "**!allocate [stat]** - Allocate stat points\nAlias: !alloc\nAllocate stat points to strength, agility, intelligence, or vitality.",
+                    'allocate': "**!allocate [stat]** - Allocate stat points\nAliases: !alloc, !stats\nAllocate stat points to strength, agility, intelligence, or vitality.",
                     'dungeon': "**!dungeon** - Enter a dungeon\nStarts a dungeon run with turn-based combat against rats.",
                     'help': "**!help [command]** - Show help\nAliases: !h, !commands\nShows this help message or help for a specific command."
                 }

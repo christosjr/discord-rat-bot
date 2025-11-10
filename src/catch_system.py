@@ -22,10 +22,12 @@ class WildRatManager:
     def __init__(self):
         self.active_spawns = {}  # channel_id -> spawn data
         self.spawn_timer = None
+        self.bot = None  # Will be set when starting
     
-    async def start_spawning(self):
+    async def start_spawning(self, bot=None):
         """Start the automatic rat spawning system"""
         logger.info("Starting wild rat spawning system")
+        self.bot = bot
         self.spawn_timer = asyncio.create_task(self._spawn_loop())
     
     async def stop_spawning(self):
@@ -39,8 +41,8 @@ class WildRatManager:
         while True:
             try:
                 await self._check_and_cleanup_expired_spawns()
-                await self._maybe_spawn_rat()
-                await asyncio.sleep(60)  # Check every minute
+                await self._spawn_rats_in_all_channels()
+                await asyncio.sleep(180)  # Check every 3 minutes
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -60,19 +62,53 @@ class WildRatManager:
             del self.active_spawns[channel_id]
             logger.info(f"Cleaned up expired rat spawn in channel {channel_id}")
     
-    async def _maybe_spawn_rat(self):
-        """Maybe spawn a new wild rat"""
-        # Get random interval between min and max
-        min_interval = SPAWN_SETTINGS['min_interval_minutes']
-        max_interval = SPAWN_SETTINGS['max_interval_minutes']
+    async def _spawn_rats_in_all_channels(self):
+        """Spawn rats in all configured channels"""
+        try:
+            # Get all guilds and their spawn channels
+            from src.database import db_manager
+            guild_settings = await db_manager.fetchall("""
+                SELECT guild_id, spawn_chapter_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes
+                FROM guild_spawn_settings WHERE enabled = 1
+            """)
+            
+            for guild_setting in guild_settings:
+                guild_id = guild_setting['guild_id']
+                try:
+                    # Parse channel IDs (stored as JSON string)
+                    import json
+                    channel_ids = json.loads(guild_setting['spawn_channel_ids'] or '[]')
+                    
+                    # Get the Discord guild
+                    guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        continue
+                    
+                    # Spawn 2-4 rats randomly in random channels
+                    min_count = guild_setting['min_spawn_count'] or 2
+                    max_count = guild_setting['max_spawn_count'] or 4
+                    spawn_count = random.randint(min_count, max_count)
+                    
+                    # Shuffle channels and take first spawn_count
+                    available_channels = [ch_id for ch_id in channel_ids if ch_id.isdigit()]
+                    random.shuffle(available_channels)
+                    channels_to_spawn = available_channels[:spawn_count]
+                    
+                    for channel_id in channels_to_spawn:
+                        # Spawn in this channel
+                        success = await self.spawn_wild_rat(channel_id)
+                        if success:
+                            # Send spawn message to the channel
+                            channel = guild.get_channel(int(channel_id))
+                            if channel:
+                                await channel.send("🐭 A wild rat has appeared! Use `!catch` to try catching it!")
+                
+                except Exception as e:
+                    logger.error(f"Error spawning rats in guild {guild_id}: {e}")
+                    continue
         
-        # For simplicity, we'll just check if we should spawn every minute
-        # In a real implementation, you'd want a more sophisticated timing system
-        
-        if random.randint(1, 100) <= 10:  # 10% chance per minute
-            # This is a simplified spawning system
-            # In practice, you'd want per-channel timing
-            pass
+        except Exception as e:
+            logger.error(f"Error in _spawn_rats_in_all_channels: {e}")
     
     async def spawn_wild_rat(self, channel_id: str) -> bool:
         """Spawn a wild rat in a specific channel"""

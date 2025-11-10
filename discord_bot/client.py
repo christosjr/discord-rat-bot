@@ -68,7 +68,7 @@ class RatBotClient(commands.Bot):
         await self.change_presence(activity=activity)
         
         # Start rat spawning
-        await wild_rat_manager.start_spawning()
+        await wild_rat_manager.start_spawning(self)
         
         self.running = True
         logger.info("Bot is now online and running!")
@@ -135,6 +135,16 @@ class RatBotClient(commands.Bot):
             INSERT OR IGNORE INTO game_settings (guild_id, rat_spawn_interval_minutes, trader_spawn_chance_percent, enabled)
             VALUES (?, ?, ?, ?)
         """, (str(guild.id), 15, 15, True))
+        
+        # Create default spawn settings for the guild
+        import json
+        default_channels = []  # Empty by default - admin needs to add channels
+        
+        await db_manager.execute("""
+            INSERT OR IGNORE INTO guild_spawn_settings 
+            (guild_id, enabled, spawn_channel_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes, created_at)
+            VALUES (?, 1, ?, 2, 4, 3, datetime('now'))
+        """, (str(guild.id), json.dumps(default_channels)))
         
         # Send welcome message
         try:

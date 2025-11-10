@@ -38,8 +38,6 @@ if token:
         raise ValueError("Invalid Discord bot token format. Expected format: xxxxxx.yyyyyy.zzzzzz")
     if len(token) < 50:
         raise ValueError("Discord bot token appears to be too short. Please check the token format.")
-else:
-    raise ValueError("DISCORD_BOT_TOKEN environment variable is not set or is empty")
 
 # Database configuration
 DATABASE_CONFIG = {

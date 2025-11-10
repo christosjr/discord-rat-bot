@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 from discord import ui
 import asyncio
+import json
 
 from src.player import Player
 from src.database import db_manager
@@ -42,8 +43,8 @@ class AdminCommands(commands.Cog):
         )
         
         embed.add_field(
-            name="🎮 Game Management",
-            value="`!admin spawn_rat [channel]` - Force rat spawn\n`!admin reset_player [user]` - Reset player data",
+            name="🎮 Rat Spawning",
+            value="`!spawn [channel]` - Manual rat spawn\n`!admin_spawn_rate [min] [max] [interval]` - Set spawn rate\n`!admin_spawn_channels add/remove #channel` - Manage spawn channels",
             inline=False
         )
         
@@ -342,3 +343,188 @@ class AdminCommands(commands.Cog):
             
         except Exception as e:
             await ctx.send(f"❌ Error adjusting levels: {e}")
+    
+    @commands.command(name='admin_spawn_rate', hidden=True)
+    @commands.is_owner()
+    async def admin_spawn_rate(self, ctx, min_count: int = None, max_count: int = None, interval_minutes: int = None):
+        """Set rat spawn rate for the server"""
+        try:
+            if min_count is None and max_count is None and interval_minutes is None:
+                # Show current settings
+                settings = await db_manager.fetchone("""
+                    SELECT * FROM guild_spawn_settings WHERE guild_id = ?
+                """, (str(ctx.guild.id),))
+                
+                if settings:
+                    await ctx.send(f"Current spawn settings for {ctx.guild.name}:\n"
+                                 f"• Spawns: {settings['min_spawn_count']}-{settings['max_spawn_count']} rats every {settings['spawn_interval_minutes']} minutes\n"
+                                 f"• Channels: {len(json.loads(settings['spawn_channel_ids'] or '[]'))} configured")
+                else:
+                    await ctx.send("No spawn settings configured for this server. Use `!admin_spawn_rate [min] [max] [interval]` to set up.")
+                return
+            
+            # Validate input
+            if min_count is not None and (min_count < 1 or min_count > 10):
+                await ctx.send("❌ Min count must be between 1-10!")
+                return
+            
+            if max_count is not None and (max_count < min_count or max_count > 10):
+                await ctx.send("❌ Max count must be between min-10!")
+                return
+            
+            if interval_minutes is not None and (interval_minutes < 1 or interval_minutes > 60):
+                await ctx.send("❌ Interval must be between 1-60 minutes!")
+                return
+            
+            # Set default values
+            if min_count is None: min_count = 2
+            if max_count is None: max_count = 4
+            if interval_minutes is None: interval_minutes = 3
+            
+            # Create or update settings
+            await db_manager.execute("""
+                INSERT OR REPLACE INTO guild_spawn_settings 
+                (guild_id, enabled, min_spawn_count, max_spawn_count, spawn_interval_minutes, created_at)
+                VALUES (?, 1, ?, ?, ?, datetime('now'))
+            """, (str(ctx.guild.id), min_count, max_count, interval_minutes))
+            
+            await ctx.send(f"✅ Spawn rate updated for {ctx.guild.name}:\n"
+                         f"• {min_count}-{max_count} rats will spawn every {interval_minutes} minutes")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error setting spawn rate: {e}")
+    
+    @commands.command(name='admin_spawn_channels', hidden=True)
+    @commands.is_owner()
+    async def admin_spawn_channels(self, ctx, action: str = None, channel: discord.TextChannel = None):
+        """Manage rat spawn channels for the server"""
+        try:
+            import json
+            
+            if action is None:
+                # Show current channels
+                settings = await db_manager.fetchone("""
+                    SELECT * FROM guild_spawn_settings WHERE guild_id = ?
+                """, (str(ctx.guild.id),))
+                
+                if settings and settings['spawn_channel_ids']:
+                    channel_ids = json.loads(settings['spawn_channel_ids'])
+                    channels = []
+                    for ch_id in channel_ids:
+                        ch = ctx.guild.get_channel(int(ch_id))
+                        if ch:
+                            channels.append(f"• {ch.mention} (ID: {ch_id})")
+                    
+                    if channels:
+                        await ctx.send(f"Spawn channels for {ctx.guild.name}:\n" + "\n".join(channels))
+                    else:
+                        await ctx.send("No valid spawn channels configured for this server.")
+                else:
+                    await ctx.send("No spawn channels configured. Use `!admin_spawn_channels add #channel` to add channels.")
+                return
+            
+            if action.lower() == 'add':
+                if not channel:
+                    await ctx.send("❌ Please specify a channel! Usage: `!admin_spawn_channels add #channel`")
+                    return
+                
+                # Get current settings
+                settings = await db_manager.fetchone("""
+                    SELECT * FROM guild_spawn_settings WHERE guild_id = ?
+                """, (str(ctx.guild.id),))
+                
+                if settings and settings['spawn_channel_ids']:
+                    channel_ids = json.loads(settings['spawn_channel_ids'])
+                else:
+                    channel_ids = []
+                
+                # Add channel if not already present
+                ch_id = str(channel.id)
+                if ch_id in channel_ids:
+                    await ctx.send(f"❌ {channel.mention} is already configured as a spawn channel!")
+                    return
+                
+                channel_ids.append(ch_id)
+                
+                # Update settings
+                await db_manager.execute("""
+                    INSERT OR REPLACE INTO guild_spawn_settings 
+                    (guild_id, enabled, spawn_channel_ids, created_at)
+                    VALUES (?, 1, ?, datetime('now'))
+                """, (str(ctx.guild.id), json.dumps(channel_ids)))
+                
+                await ctx.send(f"✅ Added {channel.mention} to spawn channels!")
+                
+            elif action.lower() == 'remove':
+                if not channel:
+                    await ctx.send("❌ Please specify a channel! Usage: `!admin_spawn_channels remove #channel`")
+                    return
+                
+                # Get current settings
+                settings = await db_manager.fetchone("""
+                    SELECT * FROM guild_spawn_settings WHERE guild_id = ?
+                """, (str(ctx.guild.id),))
+                
+                if not settings or not settings['spawn_channel_ids']:
+                    await ctx.send("❌ No spawn channels configured!")
+                    return
+                
+                channel_ids = json.loads(settings['spawn_channel_ids'])
+                ch_id = str(channel.id)
+                
+                if ch_id not in channel_ids:
+                    await ctx.send(f"❌ {channel.mention} is not configured as a spawn channel!")
+                    return
+                
+                channel_ids.remove(ch_id)
+                
+                # Update settings
+                await db_manager.execute("""
+                    INSERT OR REPLACE INTO guild_spawn_settings 
+                    (guild_id, enabled, spawn_channel_ids, created_at)
+                    VALUES (?, 1, ?, datetime('now'))
+                """, (str(ctx.guild.id), json.dumps(channel_ids)))
+                
+                await ctx.send(f"✅ Removed {channel.mention} from spawn channels!")
+                
+            elif action.lower() == 'clear':
+                await db_manager.execute("""
+                    INSERT OR REPLACE INTO guild_spawn_settings 
+                    (guild_id, enabled, spawn_channel_ids, created_at)
+                    VALUES (?, 1, '[]', datetime('now'))
+                """, (str(ctx.guild.id),))
+                
+                await ctx.send("✅ Cleared all spawn channels!")
+            
+            else:
+                await ctx.send("❌ Invalid action! Use: add, remove, or clear")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error managing spawn channels: {e}")
+    
+    @commands.command(name='spawn', aliases=['ratspawn'], hidden=True)
+    @commands.is_owner()
+    async def manual_spawn(self, ctx, channel: discord.TextChannel = None):
+        """Manually spawn a rat in a channel (or current channel)"""
+        try:
+            from src.catch_system import wild_rat_manager
+            
+            # Use current channel if none specified
+            target_channel = channel or ctx.channel
+            
+            # Check if there's already a rat in this channel
+            if str(target_channel.id) in wild_rat_manager.active_spawns:
+                await ctx.send(f"❌ There's already a rat in {target_channel.mention}!")
+                return
+            
+            # Spawn the rat
+            success = await wild_rat_manager.spawn_wild_rat(str(target_channel.id))
+            
+            if success:
+                await ctx.send(f"✅ Successfully spawned a rat in {target_channel.mention}!")
+                await target_channel.send("🐭 A wild rat has appeared! Use `!catch` to try catching it!")
+            else:
+                await ctx.send(f"❌ Failed to spawn rat in {target_channel.mention}!")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error spawning rat: {e}")
