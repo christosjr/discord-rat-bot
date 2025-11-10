@@ -1,0 +1,44 @@
+# Discord Rat Bot Requirements
+# Core dependencies
+
+# Discord.py - Discord bot framework
+discord.py>=2.3.0
+
+# Database
+asyncpg>=0.28.0  # PostgreSQL async driver
+sqlite3  # Built into Python
+
+# Environment and configuration
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Async support
+asyncio-mqtt>=0.11.0
+
+# Utilities
+psutil>=5.9.0  # System monitoring for admin stats
+requests>=2.31.0  # HTTP requests
+aiofiles>=23.0.0  # Async file operations
+
+# Development and testing (optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0  # Code formatting
+flake8>=6.0.0  # Code linting
+mypy>=1.0.0  # Type checking
+
+# Production (optional)
+gunicorn>=21.0.0  # WSGI server for production
+uvicorn>=0.23.0  # ASGI server alternative
+
+# Logging and monitoring
+structlog>=23.0.0  # Structured logging
+sentry-sdk>=1.32.0  # Error tracking (optional)
+
+# Caching (optional)
+aiocache>=0.12.0
+redis>=4.6.0  # Redis for caching
+
+# Background tasks
+celery>=5.3.0  # Background task queue (optional)
+apscheduler>=3.10.0  # Built-in scheduler alternative
