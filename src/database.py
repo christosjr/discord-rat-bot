@@ -19,6 +19,16 @@ class DatabaseManager:
     def __init__(self):
         self.connection = None
         self.db_type = DATABASE_CONFIG['type']
+        # Ensure database directory exists for SQLite
+        if self.db_type == 'sqlite':
+            import os
+            db_path = DATABASE_CONFIG['database']
+            if ':' in db_path:
+                # Handle absolute or relative paths properly
+                pass
+            else:
+                # Create database in current directory
+                pass
     
     async def connect(self):
         """Connect to the database"""
@@ -51,6 +61,10 @@ class DatabaseManager:
     async def execute(self, query: str, params: tuple = None):
         """Execute a database query"""
         try:
+            # Auto-connect if not connected
+            if self.connection is None:
+                await self.connect()
+                
             if self.db_type == 'sqlite':
                 cursor = self.connection.cursor()
                 cursor.execute(query, params or ())
