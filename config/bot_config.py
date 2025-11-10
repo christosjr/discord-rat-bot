@@ -30,6 +30,16 @@ missing_vars = [var for var in required_vars if not os.getenv(var)]
 if missing_vars:
     raise ValueError(f"Missing required environment variables: {missing_vars}")
 
+# Validate token format
+token = os.getenv('DISCORD_BOT_TOKEN')
+if token:
+    if not token.startswith(('MTM', 'OTM', 'NDE', 'NDU', 'NDI', 'NDk', 'NDc', 'NDQ', 'NDM', 'OQ', 'Mt', 'OT', 'ND')):
+        raise ValueError("Invalid Discord bot token format. Token should start with MT, OT, ND, or MQ")
+    if len(token) < 50:
+        raise ValueError("Discord bot token appears to be too short. Please check the token format.")
+else:
+    raise ValueError("DISCORD_BOT_TOKEN environment variable is not set or is empty")
+
 # Database configuration
 DATABASE_CONFIG = {
     'type': 'sqlite',  # 'sqlite' or 'postgresql'

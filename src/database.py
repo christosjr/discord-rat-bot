@@ -5,11 +5,14 @@ Database connection and setup for the Discord Rat Bot.
 """
 
 import sqlite3
-import asyncpg
 import asyncio
 import logging
 from typing import Optional
 from config.bot_config import DATABASE_CONFIG
+
+# Import asyncpg only if using PostgreSQL
+if DATABASE_CONFIG['type'] == 'postgresql':
+    import asyncpg
 
 logger = logging.getLogger(__name__)
 
