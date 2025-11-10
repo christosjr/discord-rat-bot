@@ -30,11 +30,12 @@ missing_vars = [var for var in required_vars if not os.getenv(var)]
 if missing_vars:
     raise ValueError(f"Missing required environment variables: {missing_vars}")
 
-# Validate token format
+# Basic token format validation (Discord tokens are JWT-like with 3 parts)
 token = os.getenv('DISCORD_BOT_TOKEN')
 if token:
-    if not token.startswith(('MTM', 'OTM', 'NDE', 'NDU', 'NDI', 'NDk', 'NDc', 'NDQ', 'NDM', 'OQ', 'Mt', 'OT', 'ND')):
-        raise ValueError("Invalid Discord bot token format. Token should start with MT, OT, ND, or MQ")
+    parts = token.split('.')
+    if len(parts) != 3:
+        raise ValueError("Invalid Discord bot token format. Expected format: xxxxxx.yyyyyy.zzzzzz")
     if len(token) < 50:
         raise ValueError("Discord bot token appears to be too short. Please check the token format.")
 else:
