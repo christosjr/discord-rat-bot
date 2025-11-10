@@ -4,7 +4,7 @@ Trader Configuration
 Defines all trader types and their inventory.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 import random
