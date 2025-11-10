@@ -41,13 +41,16 @@ class WildRatManager:
         logger.info("Cleared all active spawns")
         
     async def _spawn_loop(self):
-        """Main spawning loop - spawns rats in all configured channels every 3 minutes"""
+        """Main spawning loop - spawns rats in all configured channels based on database settings"""
         while True:
             try:
                 logger.info("Spawn loop iteration starting...")
                 await self._check_and_cleanup_expired_spawns()
                 await self._spawn_rats_in_all_channels()
-                await asyncio.sleep(180)  # Check every 3 minutes (180 seconds)
+                
+                # Get the minimum interval from all enabled guilds to determine how long to wait
+                await self._wait_for_next_spawn_cycle()
+                
             except asyncio.CancelledError:
                 logger.info("Spawn loop cancelled")
                 break
@@ -59,8 +62,7 @@ class WildRatManager:
         """Spawn rats in all configured channels based on guild settings"""
         try:
             # Get all guild spawn settings from database
-            from src.database import db_manager as local_db_manager
-            guild_settings = await local_db_manager.fetchall("""
+            guild_settings = await db_manager.fetchall("""
                 SELECT guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, 
                        spawn_interval_minutes, enabled 
                 FROM guild_spawn_settings 
@@ -127,6 +129,32 @@ class WildRatManager:
                     
         except Exception as e:
             logger.error(f"Error in _spawn_rats_in_all_channels: {e}")
+    
+    async def _wait_for_next_spawn_cycle(self):
+        """Wait for the next spawn cycle based on guild settings"""
+        try:
+            # Get minimum interval from all enabled guilds
+            guild_settings = await db_manager.fetchall("""
+                SELECT spawn_interval_minutes 
+                FROM guild_spawn_settings 
+                WHERE enabled = 1 AND spawn_interval_minutes > 0
+                ORDER BY spawn_interval_minutes ASC
+                LIMIT 1
+            """)
+            
+            if guild_settings:
+                min_interval_minutes = guild_settings[0]['spawn_interval_minutes']
+                wait_seconds = max(60, min_interval_minutes * 60)  # At least 1 minute, convert to seconds
+                logger.info(f"Waiting {min_interval_minutes} minutes ({wait_seconds} seconds) until next spawn cycle")
+                await asyncio.sleep(wait_seconds)
+            else:
+                # No enabled guilds found, wait 5 minutes and check again
+                logger.info("No enabled guilds with spawn settings found, waiting 5 minutes")
+                await asyncio.sleep(300)
+                
+        except Exception as e:
+            logger.error(f"Error calculating wait time: {e}")
+            await asyncio.sleep(300)  # Default 5 minutes on error
     
     async def _check_and_cleanup_expired_spawns(self):
         """Remove expired rat spawns"""

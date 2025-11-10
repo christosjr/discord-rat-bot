@@ -53,9 +53,7 @@ class RatBotClient(commands.Bot):
         # Register commands
         await register_commands(self)
         
-        # Start background tasks
-        if not self.rat_spawning_task.is_running():
-            self.rat_spawning_task.start()
+        # Start background tasks (spawner is managed by wild_rat_manager)
         
         logger.info("Bot setup completed")
     
@@ -163,9 +161,7 @@ Enjoy catching rats and exploring dungeons! 🎮
         """Close the bot gracefully"""
         logger.info("Shutting down bot...")
         
-        # Stop background tasks
-        if self.rat_spawning_task.is_running():
-            self.rat_spawning_task.cancel()
+        # Background tasks are handled by wild_rat_manager
         
         # Stop rat spawning
         await wild_rat_manager.stop_spawning()
@@ -179,18 +175,7 @@ Enjoy catching rats and exploring dungeons! 🎮
         self.running = False
         self.shutdown_event.set()
     
-    @tasks.loop(minutes=1)
-    async def rat_spawning_task(self):
-        """Background task for rat spawning"""
-        try:
-            # This task manages global rat spawning across all channels
-            # In a more advanced implementation, you might want to track
-            # per-channel timing and spawn rates
-            
-            logger.debug("Rat spawning task running...")
-            
-        except Exception as e:
-            logger.error(f"Error in rat spawning task: {e}")
+
 
 # Global bot instance
 bot = RatBotClient()

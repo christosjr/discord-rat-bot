@@ -9,6 +9,7 @@ from discord.ext import commands
 from discord import ui
 import asyncio
 import json
+from datetime import datetime
 
 from src.player import Player
 import src.database as db_manager
@@ -330,6 +331,70 @@ class AdminCommands(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Cleanup failed: {e}")
     
+    @commands.command(name='admin_spawn_status', hidden=True)
+    async def admin_spawn_status(self, ctx):
+        """Show current spawn status and settings (debugging)"""
+        if not await is_admin(ctx):
+            await ctx.send("❌ You don't have permission to use this command!")
+            return
+            
+        try:
+            guild_id = str(ctx.guild.id)
+            
+            # Get guild spawn settings
+            settings = await db_manager.db_manager.fetchone("""
+                SELECT spawn_channel_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes, enabled 
+                FROM guild_spawn_settings WHERE guild_id = ?
+            """, (guild_id,))
+            
+            if not settings:
+                await ctx.send("❌ No spawn settings configured for this server! Use `!admin_spawn_rate 2 4 3` to set up.")
+                return
+            
+            # Get active spawns for this guild
+            from src.catch_system import wild_rat_manager
+            guild_active_spawns = []
+            import json
+            channel_ids = json.loads(settings['spawn_channel_ids'] or '[]')
+            
+            for channel_id in channel_ids:
+                if channel_id in wild_rat_manager.active_spawns:
+                    spawn_data = wild_rat_manager.active_spawns[channel_id]
+                    channel_obj = ctx.guild.get_channel(int(channel_id))
+                    channel_name = channel_obj.mention if channel_obj else f"Unknown Channel ({channel_id})"
+                    
+                    time_left = spawn_data['expires_at'] - datetime.now()
+                    time_left_str = f"{time_left.seconds}s" if time_left.total_seconds() > 0 else "Expired"
+                    
+                    guild_active_spawns.append(f"• {channel_name}: {spawn_data['type']} ({time_left_str} left)")
+            
+            # Create embed with status
+            embed = discord.Embed(
+                title="🐭 Spawn Status & Settings",
+                description=f"Server: {ctx.guild.name}",
+                color=0x0099ff
+            )
+            
+            embed.add_field(name="📋 Configuration", value=f"Min: {settings['min_spawn_count']}, Max: {settings['max_spawn_count']}, Interval: {settings['spawn_interval_minutes']} min", inline=False)
+            embed.add_field(name="🎛️ Status", value="Enabled" if settings['enabled'] else "Disabled", inline=True)
+            embed.add_field(name="📺 Channels", value=str(len(channel_ids)), inline=True)
+            
+            if guild_active_spawns:
+                embed.add_field(name="🐭 Active Spawns", value="\n".join(guild_active_spawns), inline=False)
+            else:
+                embed.add_field(name="🐭 Active Spawns", value="None currently active", inline=False)
+            
+            # Show next spawn timing
+            from datetime import datetime
+            next_spawn = datetime.now().replace(microsecond=0)
+            embed.add_field(name="⏰ Current Time", value=str(next_spawn), inline=True)
+            embed.add_field(name="🔄 Next Check", value=f"~{settings['spawn_interval_minutes']} minutes", inline=True)
+            
+            await ctx.send(embed=embed)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error getting spawn status: {e}")
+
     @commands.command(name='admin_clear_spawns', hidden=True)
     async def admin_clear_spawns(self, ctx):
         """Clear all active rat spawns (debugging)"""
