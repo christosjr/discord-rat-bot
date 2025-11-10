@@ -22,12 +22,11 @@ class WildRatManager:
     def __init__(self):
         self.active_spawns = {}  # channel_id -> spawn data
         self.spawn_timer = None
-        self.bot = None  # Will be set when starting
+        self.bot = None  # Will be set by the bot client
     
-    async def start_spawning(self, bot=None):
+    async def start_spawning(self):
         """Start the automatic rat spawning system"""
         logger.info("Starting wild rat spawning system")
-        self.bot = bot
         self.spawn_timer = asyncio.create_task(self._spawn_loop())
     
     async def stop_spawning(self):
@@ -37,17 +36,72 @@ class WildRatManager:
             logger.info("Stopped wild rat spawning system")
     
     async def _spawn_loop(self):
-        """Main spawning loop"""
+        """Main spawning loop - spawns rats in all configured channels every 3 minutes"""
         while True:
             try:
                 await self._check_and_cleanup_expired_spawns()
                 await self._spawn_rats_in_all_channels()
-                await asyncio.sleep(180)  # Check every 3 minutes
+                await asyncio.sleep(180)  # Check every 3 minutes (180 seconds)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in spawn loop: {e}")
-                await asyncio.sleep(60)
+                await asyncio.sleep(180)
+
+    async def _spawn_rats_in_all_channels(self):
+        """Spawn rats in all configured channels based on guild settings"""
+        try:
+            # Get all guild spawn settings from database
+            guild_settings = await db_manager.fetchall("""
+                SELECT guild_id, spawn_channel_ids, min_spawn_count, max_spawn_count, 
+                       spawn_interval_minutes, enabled 
+                FROM guild_spawn_settings 
+                WHERE enabled = 1
+            """)
+            
+            for settings in guild_settings:
+                if not self.bot:
+                    continue
+                    
+                try:
+                    # Parse channel IDs from JSON
+                    import json
+                    channel_ids = json.loads(settings['spawn_channel_ids'])
+                    
+                    # Get min/max spawn counts
+                    min_spawn = settings['min_spawn_count'] or 2
+                    max_spawn = settings['max_spawn_count'] or 4
+                    
+                    # Choose random number of rats to spawn
+                    spawn_count = random.randint(min_spawn, max_spawn)
+                    
+                    # Choose random channels to spawn in
+                    if len(channel_ids) >= spawn_count:
+                        selected_channels = random.sample(channel_ids, spawn_count)
+                    else:
+                        selected_channels = channel_ids
+                    
+                    # Spawn rats in selected channels
+                    for channel_id in selected_channels:
+                        # Check if channel already has a rat
+                        if channel_id not in self.active_spawns:
+                            success = await self.spawn_wild_rat(channel_id)
+                            if success:
+                                # Send message to channel
+                                try:
+                                    channel = self.bot.get_channel(int(channel_id))
+                                    if channel:
+                                        await channel.send("🐭 A wild rat has appeared! Use `!catch` to try and catch it!")
+                                        logger.info(f"Spawned rat in channel {channel_id} for guild {settings['guild_id']}")
+                                except Exception as e:
+                                    logger.error(f"Error sending spawn message to channel {channel_id}: {e}")
+                
+                except Exception as e:
+                    logger.error(f"Error spawning rats for guild {settings['guild_id']}: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Error in _spawn_rats_in_all_channels: {e}")
     
     async def _check_and_cleanup_expired_spawns(self):
         """Remove expired rat spawns"""
@@ -61,54 +115,6 @@ class WildRatManager:
         for channel_id in expired_channels:
             del self.active_spawns[channel_id]
             logger.info(f"Cleaned up expired rat spawn in channel {channel_id}")
-    
-    async def _spawn_rats_in_all_channels(self):
-        """Spawn rats in all configured channels"""
-        try:
-            # Get all guilds and their spawn channels
-            from src.database import db_manager
-            guild_settings = await db_manager.fetchall("""
-                SELECT guild_id, spawn_chapter_ids, min_spawn_count, max_spawn_count, spawn_interval_minutes
-                FROM guild_spawn_settings WHERE enabled = 1
-            """)
-            
-            for guild_setting in guild_settings:
-                guild_id = guild_setting['guild_id']
-                try:
-                    # Parse channel IDs (stored as JSON string)
-                    import json
-                    channel_ids = json.loads(guild_setting['spawn_channel_ids'] or '[]')
-                    
-                    # Get the Discord guild
-                    guild = self.bot.get_guild(int(guild_id))
-                    if not guild:
-                        continue
-                    
-                    # Spawn 2-4 rats randomly in random channels
-                    min_count = guild_setting['min_spawn_count'] or 2
-                    max_count = guild_setting['max_spawn_count'] or 4
-                    spawn_count = random.randint(min_count, max_count)
-                    
-                    # Shuffle channels and take first spawn_count
-                    available_channels = [ch_id for ch_id in channel_ids if ch_id.isdigit()]
-                    random.shuffle(available_channels)
-                    channels_to_spawn = available_channels[:spawn_count]
-                    
-                    for channel_id in channels_to_spawn:
-                        # Spawn in this channel
-                        success = await self.spawn_wild_rat(channel_id)
-                        if success:
-                            # Send spawn message to the channel
-                            channel = guild.get_channel(int(channel_id))
-                            if channel:
-                                await channel.send("🐭 A wild rat has appeared! Use `!catch` to try catching it!")
-                
-                except Exception as e:
-                    logger.error(f"Error spawning rats in guild {guild_id}: {e}")
-                    continue
-        
-        except Exception as e:
-            logger.error(f"Error in _spawn_rats_in_all_channels: {e}")
     
     async def spawn_wild_rat(self, channel_id: str) -> bool:
         """Spawn a wild rat in a specific channel"""
@@ -301,6 +307,7 @@ class WildRatManager:
             for item_id in loot:
                 success = await player.add_to_inventory(item_id, 'equipment', 1)
                 if success:
+                    from config.equipment import ALL_EQUIPMENT
                     item_data = ALL_EQUIPMENT.get(item_id)
                     if item_data:
                         loot_messages.append(f"🎁 {item_data.name}")

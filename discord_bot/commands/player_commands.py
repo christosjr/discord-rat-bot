@@ -20,8 +20,8 @@ class PlayerCommands(commands.Cog):
         self.bot = bot
     
     @commands.command(name='create', aliases=['start', 'new'])
-    async def create_character(self, ctx):
-        """Create a new character"""
+    async def create_character(self, ctx, *, character_name: str = None):
+        """Create a new character with optional name"""
         try:
             # Check if player already exists
             existing_player = await Player.get_by_discord_id(str(ctx.author.id))
@@ -29,19 +29,23 @@ class PlayerCommands(commands.Cog):
                 await ctx.send("❌ You already have a character! Use `!stats` to view your character.")
                 return
             
-            # Create new character
-            player_data = await get_or_create_player(str(ctx.author.id), ctx.author.name)
+            # Create new character with name and random cat emoji
+            player_data = await get_or_create_player(str(ctx.author.id), ctx.author.name, character_name)
             if not player_data:
                 await ctx.send("❌ Failed to create character. Please try again.")
                 return
             
-            # Send welcome message
+            # Get the created player's data for display
+            player = Player(player_data)
+            
+            # Send welcome message with cat theme
             embed = discord.Embed(
-                title="🐭 Welcome to Rat Catching Adventure!",
-                description="Your character has been created successfully!",
+                title=f"{player.cat_emoji} Welcome to Rat Catching Adventure!",
+                description=f"Your cat `{player.name}` has been created successfully!",
                 color=0x00ff00
             )
             
+            # Use cat-themed stats display
             embed.add_field(name="🏆 Level", value=f"{STARTING_STATS['level']}", inline=True)
             embed.add_field(name="💰 Gold", value=f"{STARTING_STATS['gold']}", inline=True)
             embed.add_field(name="⭐ XP", value=f"{STARTING_STATS['xp']}", inline=True)
@@ -77,9 +81,10 @@ class PlayerCommands(commands.Cog):
             total_stats = player.get_total_stats()
             combat_stats = player.get_combat_stats()
             
-            # Create embed
+            # Create embed with cat theme
             embed = discord.Embed(
-                title=f"📊 {ctx.author.display_name}'s Character",
+                title=f"{player.cat_emoji} {player.name}'s Profile",
+                description="A proud cat in the rat-catching world!",
                 color=0x0099ff
             )
             
@@ -96,21 +101,49 @@ class PlayerCommands(commands.Cog):
             embed.add_field(name="📈 Stat Points", value=str(player.stat_points), inline=True)
             embed.add_field(name="🌟 Perk Points", value=str(player.perk_points), inline=True)
             
-            # Base stats
-            embed.add_field(name="💪 Strength", value=str(total_stats['strength']), inline=True)
-            embed.add_field(name="🏃 Agility", value=str(total_stats['agility']), inline=True)
-            embed.add_field(name="🧠 Intelligence", value=str(total_stats['intelligence']), inline=True)
-            embed.add_field(name="❤️ Vitality", value=str(total_stats['vitality']), inline=True)
+            # Base stats with cat theme
+            embed.add_field(name="💪 Purr Strength", value=str(total_stats['strength']), inline=True)
+            embed.add_field(name="🏃 Leaping Agility", value=str(total_stats['agility']), inline=True)
+            embed.add_field(name="🧠 Cat Intelligence", value=str(total_stats['intelligence']), inline=True)
+            embed.add_field(name="❤️ Nine Lives Vitality", value=str(total_stats['vitality']), inline=True)
             
-            # Combat stats
-            embed.add_field(name="⚔️ Attack", value=str(combat_stats['attack']), inline=True)
-            embed.add_field(name="🏹 Ranged Attack", value=str(combat_stats['ranged_attack']), inline=True)
-            embed.add_field(name="🪄 Magic Attack", value=str(combat_stats['magic_attack']), inline=True)
-            embed.add_field(name="🛡️ Defense", value=str(combat_stats['defense']), inline=True)
-            embed.add_field(name="⚡ Speed", value=str(combat_stats['speed']), inline=True)
-            embed.add_field(name="❤️ Health", value=str(combat_stats['health']), inline=True)
-            embed.add_field(name="🔮 Mana", value=str(combat_stats['mana']), inline=True)
-            embed.add_field(name="💥 Critical Chance", value=f"{combat_stats['critical_chance']}%", inline=True)
+            # Combat stats with cat theme
+            embed.add_field(name="⚔️ Paw Combat", value=str(combat_stats['attack']), inline=True)
+            embed.add_field(name="🏹 Claw Marksman", value=str(combat_stats['ranged_attack']), inline=True)
+            embed.add_field(name="🪄 Cat Magic", value=str(combat_stats['magic_attack']), inline=True)
+            embed.add_field(name="🛡️ Fur Shield", value=str(combat_stats['defense']), inline=True)
+            embed.add_field(name="⚡ Reflex Speed", value=str(combat_stats['speed']), inline=True)
+            embed.add_field(name="❤️ Purr Health", value=str(combat_stats['health']), inline=True)
+            embed.add_field(name="🔮 Purr Magic", value=str(combat_stats['mana']), inline=True)
+            embed.add_field(name="💥 Whiskers Critical", value=f"{combat_stats['critical_chance']}%", inline=True)
+            
+            # Equipment slots
+            equipment_text = []
+            slot_emojis = {
+                'weapon': '⚔️',
+                'head': '🪖',
+                'body': '🛡️', 
+                'ring': '💍',
+                'tail_ring': '💍',
+                'neck': '📿',
+                'boots': '👢'
+            }
+            
+            for slot_name, equipment_item in player.equipment.__dict__.items():
+                if equipment_item:
+                    # Check if it's a dict with 'data' or a direct object
+                    if isinstance(equipment_item, dict) and 'data' in equipment_item:
+                        item_name = equipment_item['data'].name
+                    elif hasattr(equipment_item, 'name'):
+                        item_name = equipment_item.name
+                    else:
+                        item_name = str(equipment_item)
+                    equipment_text.append(f"{slot_emojis.get(slot_name, '📦')} **{slot_name.replace('_', ' ').title()}:** {item_name}")
+                else:
+                    equipment_text.append(f"{slot_emojis.get(slot_name, '📦')} **{slot_name.replace('_', ' ').title()}:** [Empty]")
+            
+            if equipment_text:
+                embed.add_field(name="👕 Equipment", value="\n".join(equipment_text), inline=False)
             
             await ctx.send(embed=embed)
             
@@ -253,8 +286,8 @@ class PlayerCommands(commands.Cog):
                 )
                 
                 embed.add_field(
-                    name="🎮 Getting Started",
-                    value="`!create` - Create your character\n`!catch` - Catch wild rats\n`!stats` - View your character\n`!inventory` - See your items",
+                    name="🎆 Getting Started",
+                    value="`!create [name]` - Create your cat character\n`!catch` - Catch wild rats\n`!stats` - View your cat's profile\n`!inventory` - See your items",
                     inline=False
                 )
                 
@@ -287,11 +320,11 @@ class PlayerCommands(commands.Cog):
                 # Command-specific help
                 command = command.lower()
                 help_texts = {
-                    'create': "**!create** - Create a new character\nAliases: !start, !new\nCreates your character and gives you starting equipment.",
+                    'create': "**!create [name]** - Create a new cat character\nAliases: !start, !new\nCreates your character with a random cat emoji.\nOptionally provide a name, otherwise uses your Discord name.",
                     'catch': "**!catch** - Catch wild rats\nThe bot will occasionally spawn wild rats. Be the first to catch them for rewards!",
                     'stats': "**!stats** - View character stats\nAliases: !stat, !character\nShows your level, stats, equipment, and progress.",
                     'inventory': "**!inventory [page]** - View your inventory\nAliases: !inv, !items\nShows your equipment and items. Use page number to navigate.",
-                    'allocate': "**!allocate [stat]** - Allocate stat points\nAliases: !alloc, !stats\nAllocate stat points to strength, agility, intelligence, or vitality.",
+                    'allocate': "**!allocate [stat]** - Allocate stat points\nAlias: !alloc\nAllocate stat points to strength, agility, intelligence, or vitality.",
                     'dungeon': "**!dungeon** - Enter a dungeon\nStarts a dungeon run with turn-based combat against rats.",
                     'help': "**!help [command]** - Show help\nAliases: !h, !commands\nShows this help message or help for a specific command."
                 }

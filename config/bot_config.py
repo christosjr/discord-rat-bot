@@ -38,6 +38,8 @@ if token:
         raise ValueError("Invalid Discord bot token format. Expected format: xxxxxx.yyyyyy.zzzzzz")
     if len(token) < 50:
         raise ValueError("Discord bot token appears to be too short. Please check the token format.")
+else:
+    raise ValueError("DISCORD_BOT_TOKEN environment variable is not set or is empty")
 
 # Database configuration
 DATABASE_CONFIG = {
@@ -64,3 +66,24 @@ BOT_SETTINGS = {
     'max_message_length': 1900,  # Discord limit is 2000
     'database_backup_interval_hours': 24
 }
+
+# Admin configuration - Custom permission system
+# Add your Discord User IDs here for admin access
+# Format: '1234567890123456789'
+ADMIN_USER_IDS = os.getenv('ADMIN_USER_IDS', '').split(',')
+
+# Fallback admin IDs (use if environment variable not set)
+ALLOWED_ADMIN_IDS = [
+    # Add Discord User IDs here for admin access
+    # Example: '1234567890123456789',
+]
+
+# Final admin list (environment variable takes precedence)
+if ADMIN_USER_IDS and ADMIN_USER_IDS != ['']:
+    ADMIN_CONFIG = {
+        'allowed_admin_ids': [id.strip() for id in ADMIN_USER_IDS if id.strip()]
+    }
+else:
+    ADMIN_CONFIG = {
+        'allowed_admin_ids': ALLOWED_ADMIN_IDS
+    }

@@ -7,6 +7,7 @@ Database connection and setup for the Discord Rat Bot.
 import sqlite3
 import asyncio
 import logging
+import random
 from typing import Optional
 from config.bot_config import DATABASE_CONFIG
 
@@ -108,6 +109,34 @@ class DatabaseManager:
 # Global database manager instance
 db_manager = DatabaseManager()
 
+async def migrate_player_fields():
+    """Add new fields to the players table if they don't exist"""
+    logger.info("Running database migration for player fields...")
+    
+    try:
+        # Add name field if it doesn't exist
+        try:
+            await db_manager.execute("ALTER TABLE players ADD COLUMN name TEXT")
+            logger.info("Added 'name' column to players table")
+        except Exception as e:
+            # Column might already exist
+            if "duplicate column name" not in str(e).lower():
+                logger.warning(f"Could not add 'name' column: {e}")
+        
+        # Add cat_emoji field if it doesn't exist
+        try:
+            await db_manager.execute("ALTER TABLE players ADD COLUMN cat_emoji TEXT")
+            logger.info("Added 'cat_emoji' column to players table")
+        except Exception as e:
+            # Column might already exist
+            if "duplicate column name" not in str(e).lower():
+                logger.warning(f"Could not add 'cat_emoji' column: {e}")
+        
+        logger.info("Player field migration completed")
+    except Exception as e:
+        logger.error(f"Error during player field migration: {e}")
+        raise
+
 async def setup_database():
     """Setup the database with all required tables"""
     logger.info("Setting up database...")
@@ -129,6 +158,8 @@ async def create_tables():
             id INTEGER PRIMARY KEY,
             discord_id TEXT UNIQUE NOT NULL,
             username TEXT NOT NULL,
+            name TEXT,
+            cat_emoji TEXT,
             level INTEGER DEFAULT 1,
             xp INTEGER DEFAULT 0,
             stat_points INTEGER DEFAULT 0,
@@ -284,26 +315,50 @@ async def create_tables():
         )
     """)
     
-    # Guild spawn settings table (for detailed spawn control)
+    # Guild spawn settings table (for per-guild rat spawning configuration)
     await db_manager.execute("""
         CREATE TABLE IF NOT EXISTS guild_spawn_settings (
             id INTEGER PRIMARY KEY,
             guild_id TEXT UNIQUE NOT NULL,
-            enabled BOOLEAN DEFAULT TRUE,
-            spawn_channel_ids TEXT DEFAULT '[]', -- JSON array of channel IDs
+            spawn_channel_ids TEXT NOT NULL, -- JSON array of channel IDs
             min_spawn_count INTEGER DEFAULT 2,
             max_spawn_count INTEGER DEFAULT 4,
             spawn_interval_minutes INTEGER DEFAULT 3,
+            enabled BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
+    # Migration for adding new fields
+    await migrate_player_fields()
+    
     logger.info("All database tables created successfully")
 
 # Utility functions for database operations
-async def get_or_create_player(discord_id: str, username: str):
-    """Get existing player or create a new one"""
+def get_random_cat_emoji() -> str:
+    """Get a random cat emoji for character creation"""
+    cat_emojis = [
+        ":cat:",
+        ":cat2:",
+        ":smile_cat:",
+        ":joy_cat:",
+        ":heart_eyes_cat:",
+        ":pouting_cat:",
+        ":crying_cat_face:",
+        ":scream_cat:",
+        ":weary_cat:",
+        ":kissing_cat:",
+        ":smirk_cat:",
+        ":disappointed_relieved_face:",
+        ":sleeping_cat:",
+        ":grinning_cat:",
+        ":panda_face:"
+    ]
+    return random.choice(cat_emojis)
+
+async def get_or_create_player(discord_id: str, username: str, character_name: str = None, cat_emoji: str = None):
+    """Get existing player or create a new one with optional name and cat emoji"""
     
     # Check if player exists
     player = await db_manager.fetchone(
@@ -314,11 +369,17 @@ async def get_or_create_player(discord_id: str, username: str):
     if player:
         return dict(player) if player else None
     
+    # Set defaults for new player
+    if not character_name:
+        character_name = username
+    if not cat_emoji:
+        cat_emoji = get_random_cat_emoji()
+    
     # Create new player
     player_id = await db_manager.execute("""
-        INSERT INTO players (discord_id, username)
-        VALUES (?, ?)
-    """, (discord_id, username))
+        INSERT INTO players (discord_id, username, name, cat_emoji)
+        VALUES (?, ?, ?, ?)
+    """, (discord_id, username, character_name, cat_emoji))
     
     # Create default stats
     await db_manager.execute("""

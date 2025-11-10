@@ -38,6 +38,8 @@ class Player:
         self.id = data['id']
         self.discord_id = data['discord_id']
         self.username = data['username']
+        self.name = data.get('name', self.username)  # Character name, defaults to username
+        self.cat_emoji = data.get('cat_emoji', ':cat:')  # Cat emoji for the character
         self.level = data['level']
         self.xp = data['xp']
         self.stat_points = data['stat_points']
