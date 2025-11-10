@@ -186,7 +186,7 @@ class PlayerCommands(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error viewing inventory: {e}")
     
-    @commands.command(name='allocate', aliases=['alloc', 'stats'])
+    @commands.command(name='allocate', aliases=['alloc'])
     async def allocate_stat_point(self, ctx, stat: str = None):
         """Allocate a stat point"""
         try:
