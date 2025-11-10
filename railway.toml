@@ -1,13 +1,5 @@
-build:
-  builder: Nixpacks
-  buildCommand: |
-    pip install -r requirements.txt
-
-start:
-  command: python main.py
-  restartPolicyType: OnFailure
-  restartPolicyMaxRetries: 10
-
-variables:
-  - name: PORT
-    value: 8080
+builder = "NIXPACKS"
+buildCommand = "pip install -r requirements.txt"
+startCommand = "python main.py"
+restartPolicyType = "OnFailure"
+restartPolicyMaxRetries = 10
